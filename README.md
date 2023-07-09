@@ -1,91 +1,42 @@
----
-pipeline_tag: text-generation
-inference: true
-widget:
-- text: 'def print_hello_world():'
-  example_title: Hello world
-  group: Python
-license: bigcode-openrail-m
-datasets:
-- bigcode/the-stack-dedup
-metrics:
-- code_eval
-library_name: transformers
-tags:
-- code
-model-index:
-- name: Tiny-StarCoder-Py
-  results:
-  - task:
-      type: text-generation
-    dataset:
-      type: openai_humaneval
-      name: HumanEval
-    metrics:
-    - name: pass@1
-      type: pass@1
-      value: 7.84%
-      verified: false
----
+# ggml-downloader
 
-# TinyStarCoderPy
+**Problem:** huggingface `download_model` only supports parallel download when the model is chunked.
 
-This is a 164M parameters model with the same architecture as [StarCoder](https://huggingface.co/bigcode/starcoder) (8k context length, MQA & FIM). It was trained on the Python data from [StarCoderData](https://huggingface.co/datasets/bigcode/starcoderdata)
-for ~6 epochs which amounts to 100B tokens.
+GGML models can be quite large (30B+ especially) but chunking is not supported its always a single .bin file.
 
+**Solution:** use pypdl library that implements multi-threaded downloading via dynamic chunking
 
-## Use
+## Requirements
 
-### Intended use
+* [pypdl](https://github.com/m-jishnu/pypdl) :heart_eyes:
+* [huggingface_hub](https://github.com/huggingface/huggingface_hub) :rocket:
+* [python-fire](https://github.com/google/python-fire) :fire:
+* requests
 
-The model was trained on GitHub code, to assist with some tasks like [Assisted Generation](https://huggingface.co/blog/assisted-generation). For pure code completion, we advise using our 15B models [StarCoder]() or [StarCoderBase]().
+`pip install -r requirements.txt`
 
+## Usage - Command line
 
-### Generation
-```python
-# pip install -q transformers
-from transformers import AutoModelForCausalLM, AutoTokenizer
+`./download.py <model> [--quant <quant>] [--branch <branch>]`
 
-checkpoint = "bigcode/tiny_starcoder_py"
-device = "cuda" # for GPU usage or "cpu" for CPU usage
+`<model>` is the model you're downloading for example `TheBloke/vicuna-33B-GGML`
 
-tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-model = AutoModelForCausalLM.from_pretrained(checkpoint).to(device)
+`<quant>` is the quantization you're downloading for example `q5_0` (default is `*` which will download all files)
 
-inputs = tokenizer.encode("def print_hello_world():", return_tensors="pt").to(device)
-outputs = model.generate(inputs)
-print(tokenizer.decode(outputs[0]))
-```
+`<branch>` is optional, if omitted will download from first avilable branch
 
-### Fill-in-the-middle
-Fill-in-the-middle uses special tokens to identify the prefix/middle/suffix part of the input and output:
+## Usage - High level API
 
-```python
-input_text = "<fim_prefix>def print_one_two_three():\n    print('one')\n    <fim_suffix>\n    print('three')<fim_middle>"
-inputs = tokenizer.encode(input_text, return_tensors="pt").to(device)
-outputs = model.generate(inputs)
-print(tokenizer.decode(outputs[0]))
-```
+`from download import download_model` and call `download_model(model_name : str, quant : str = "*")`
 
-# Training
+### Usage - Low level API
 
-## Model
+1. Import the helper functions: `from download import get_filenames, build_url, get_redirect_header, parallel_download`
 
-- **Architecture:** GPT-2 model with multi-query attention and Fill-in-the-Middle objective
-- **Pretraining steps:** 50k
-- **Pretraining tokens:** 100 billion
-- **Precision:** bfloat16
+2. Get the branch and filename of the quant you're looking for: `get_filenames(model_name, quant)` returns a `(branch, filename)` iterator
 
-## Hardware
+3. Build the HF download URL: `build_url(model_name, branch, filename)` returns `url`
 
-- **GPUs:** 32 Tesla A100
-- **Training time:** 18 hours
+4. Get the LFS URL: `get_redirect_header(url)` returns `lfs_url`
 
-## Software
-
-- **Orchestration:** [Megatron-LM](https://github.com/bigcode-project/Megatron-LM)
-- **Neural networks:** [PyTorch](https://github.com/pytorch/pytorch)
-- **BP16 if applicable:** [apex](https://github.com/NVIDIA/apex)
-
-# License
-The model is licensed under the BigCode OpenRAIL-M v1 license agreement. You can find the full agreement [here](https://huggingface.co/spaces/bigcode/bigcode-model-license-agreement).
+5. Download the file: `parallel_download(lfs_url, filename)` will create `filename` in the current directory
