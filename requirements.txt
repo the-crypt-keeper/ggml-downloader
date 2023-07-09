@@ -1,3 +1,4 @@
 pypdl
 requests
 huggingface_hub
+fire
