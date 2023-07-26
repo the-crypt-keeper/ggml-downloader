@@ -15,7 +15,7 @@ def get_filenames(model_name, quant, branch = None):
     api = HfApi()
     
     try:
-        branches = api.list_repo_refs("gpt2").branches
+        branches = api.list_repo_refs(model_name).branches
         if branch is None:
             branch = branches[0].name
         else:
